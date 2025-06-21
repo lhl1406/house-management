@@ -1,0 +1,26 @@
+{
+  "name": "washing-machine-manager",
+  "version": "1.0.0",
+  "description": "Ứng dụng quản lý máy giặt cho trọ",
+  "type": "module",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "api": "cd api && npm run dev",
+    "dev:full": "concurrently \"npm run api\" \"npm run dev\"",
+    "start": "concurrently \"npm run api\" \"npm run preview\""
+  },
+  "dependencies": {
+    "vue": "^3.3.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.2.3",
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.4.24",
+    "tailwindcss": "^3.3.0",
+    "vite": "^4.4.5"
+  }
+}
