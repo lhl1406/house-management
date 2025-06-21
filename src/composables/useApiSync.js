@@ -6,10 +6,14 @@ export function useApiSync() {
   
   let pollInterval = null
   
-  // API base URL - cố định port 3002 không bao giờ thay đổi
+  // API base URL - tự động phát hiện môi trường
   const getApiUrl = () => {
-    // Luôn sử dụng port 3002 cho cả development và production local
-    return 'http://localhost:3002'
+    // Nếu đang chạy local development
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:3002'
+    }
+    // Nếu đang chạy trên Vercel hoặc production, dùng relative URL
+    return window.location.origin
   }
 
   // Check if API is available
