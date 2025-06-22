@@ -3,8 +3,8 @@ const cors = require('cors')
 require('dotenv').config()
 
 const app = express()
-// Cố định port 3002 - không bao giờ thay đổi
-const PORT = 3002
+// Fly.io auto-assigns PORT via environment variable
+const PORT = process.env.PORT || 3002
 
 // Middleware
 app.use(cors())
@@ -75,16 +75,19 @@ app.use('*', (req, res) => {
   })
 })
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Washing Machine API server running on port ${PORT}`)
-  console.log(`📍 Local: http://localhost:${PORT}`)
-  console.log(`🔍 Health check: http://localhost:${PORT}/api/health`)
-  console.log(`🤖 Machines: http://localhost:${PORT}/api/machines`)
-  console.log(`🏠 Rooms: http://localhost:${PORT}/api/rooms`)
-  console.log(`📊 Machine state (legacy): http://localhost:${PORT}/api/machine-state`)
-  console.log(`📝 History: http://localhost:${PORT}/api/history`)
-  console.log(`🔄 Queue: http://localhost:${PORT}/api/queue`)
-})
+// Start server only in non-serverless environment
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Washing Machine API server running on port ${PORT}`)
+    console.log(`📍 Local: http://localhost:${PORT}`)
+    console.log(`🔍 Health check: http://localhost:${PORT}/api/health`)
+    console.log(`🤖 Machines: http://localhost:${PORT}/api/machines`)
+    console.log(`🏠 Rooms: http://localhost:${PORT}/api/rooms`)
+    console.log(`📊 Machine state (legacy): http://localhost:${PORT}/api/machine-state`)
+    console.log(`📝 History: http://localhost:${PORT}/api/history`)
+    console.log(`🔄 Queue: http://localhost:${PORT}/api/queue`)
+  })
+}
 
+// Export for Vercel serverless
 module.exports = app 
