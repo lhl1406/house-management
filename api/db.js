@@ -555,6 +555,16 @@ const finishMachineUsage = async (machineId, roomNumber) => {
       })
     }
     
+    // Verify no active usage exists before updating machine status
+    const activeUsage = await client.execute(
+      'SELECT COUNT(*) as count FROM room_machine_usage WHERE machine_id = ? AND is_active = 1',
+      [machineId]
+    )
+    
+    if (activeUsage.rows[0].count > 0) {
+      console.warn(`⚠️ Machine ${machineId} still has active usage, something went wrong`)
+    }
+    
     // Update machine status to available
     console.log(`🔄 Updating machine ${machineId} status to available`)
     await updateMachine(machineId, {

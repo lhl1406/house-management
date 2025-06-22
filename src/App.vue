@@ -403,11 +403,11 @@
                       :value="washingUser.phoneNumber" 
                       type="tel" 
                       readonly
-                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50"
+                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50 cursor-default focus:outline-none"
                     >
                     <button 
                       @click="sendZaloToOtherRoom(washingUser.phoneNumber, 'washing', selectedRoom)"
-                      class="px-3 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 whitespace-nowrap"
+                      class="px-3 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 whitespace-nowrap flex-shrink-0"
                     >
                       📱 Gửi Zalo
                     </button>
@@ -424,11 +424,11 @@
                       :value="dryingUser.phoneNumber" 
                       type="tel" 
                       readonly
-                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50"
+                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50 cursor-default focus:outline-none"
                     >
                     <button 
                       @click="sendZaloToOtherRoom(dryingUser.phoneNumber, 'drying', selectedRoom)"
-                      class="px-3 py-2 bg-orange-500 text-white rounded text-sm hover:bg-orange-600 whitespace-nowrap"
+                      class="px-3 py-2 bg-orange-500 text-white rounded text-sm hover:bg-orange-600 whitespace-nowrap flex-shrink-0"
                     >
                       📱 Gửi Zalo
                     </button>
@@ -607,14 +607,7 @@
             {{ isLoading ? 'Đang xử lý...' : '🚪 Rời Hàng Đợi' }}
           </button>
 
-          <!-- Debug Button -->
-          <button
-            @click="() => { console.log({machines: machines, roomMachineUsage: roomMachineUsage, machineCountdowns: machineCountdowns, selectedRoom: selectedRoom}) }"
-            class="px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 text-sm"
-          >
-            <i class="fas fa-bug"></i>
-            🔍 Debug
-          </button>
+
         </div>
 
         <!-- Queue Display -->
@@ -989,7 +982,7 @@ export default {
 
     const fetchAllData = async (skipCountdownRestart = false) => {
       try {
-        if (shouldPausePolling.value) {
+        if (shouldPausePolling.value && !skipCountdownRestart) {
           console.log('⏸️ Polling paused during finish operation')
           return
         }
@@ -1211,8 +1204,25 @@ export default {
         
         stopCountdown()
         await apiFinishWashing(selectedRoom.value, machineId)
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Wait for backend to process
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        
+        // Refresh data and verify finish
         await fetchAllData(true)
+        
+        // Double check that machine is actually available
+        let retryCount = 0
+        while (retryCount < 3) {
+          const machine = machines.value.find(m => m.id === machineId)
+          if (machine && machine.status === 'available') {
+            break
+          }
+          console.log(`🔄 Retry ${retryCount + 1}: Machine still showing in_use, refreshing...`)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          await fetchAllData(true)
+          retryCount++
+        }
         
         if (phoneNumber.value && isPhoneValid.value) {
           setTimeout(() => {
@@ -1229,10 +1239,6 @@ export default {
         isFinishing.value = false
         shouldPausePolling.value = false
         autoFinishTriggered.value = false
-        
-        setTimeout(() => {
-          fetchAllData(true)
-        }, 2000)
       }
     }
 
@@ -1255,8 +1261,25 @@ export default {
         
         stopCountdown()
         await apiFinishWashing(selectedRoom.value, machineId)
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Wait for backend to process
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        
+        // Refresh data and verify finish
         await fetchAllData(true)
+        
+        // Double check that machine is actually available
+        let retryCount = 0
+        while (retryCount < 3) {
+          const machine = machines.value.find(m => m.id === machineId)
+          if (machine && machine.status === 'available') {
+            break
+          }
+          console.log(`🔄 Retry ${retryCount + 1}: Machine still showing in_use, refreshing...`)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          await fetchAllData(true)
+          retryCount++
+        }
         
         if (phoneNumber.value && isPhoneValid.value) {
           setTimeout(() => {
@@ -1273,10 +1296,6 @@ export default {
         isFinishing.value = false
         shouldPausePolling.value = false
         autoFinishTriggered.value = false
-        
-        setTimeout(() => {
-          fetchAllData(true)
-        }, 2000)
       }
     }
 
@@ -1648,6 +1667,8 @@ ${machineType === 'washing' ? '🫧 Về máy giặt' : '🌪️ Về máy sấy
       
       alert('✅ Đã mở Zalo để gửi thông báo!\n📋 Tin nhắn cũng đã được copy vào clipboard.')
     }
+
+
 
     // Lifecycle
     onMounted(async () => {
