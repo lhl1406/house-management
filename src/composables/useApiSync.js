@@ -417,13 +417,14 @@ export function useApiSync() {
     }
   }
 
-  const leaveQueue = async () => {
+  const leaveQueue = async (room = '') => {
     try {
       const response = await fetch(`${getApiUrl()}/api/queue/leave`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({ room })
       })
       
       if (!response.ok) {

@@ -42,6 +42,16 @@
             <i class="fas fa-info-circle"></i>
             Phòng đang sử dụng: {{ busyRooms.join(', ') }}
           </div>
+          
+          <!-- Queue mismatch warning -->
+          <div v-if="currentQueueInfo && selectedRoom && currentQueueInfo.roomNumber !== selectedRoom" class="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div class="text-xs text-yellow-700">
+              <i class="fas fa-exclamation-triangle"></i>
+              <strong>Cảnh báo:</strong> Bạn đang trong hàng đợi với phòng <strong>{{ currentQueueInfo.roomNumber }}</strong> 
+              nhưng đã chọn phòng <strong>{{ selectedRoom }}</strong>. 
+              Chỉ có thể rời hàng đợi khi chọn đúng phòng {{ currentQueueInfo.roomNumber }}.
+            </div>
+          </div>
         </div>
 
         <!-- Phone Number -->
@@ -884,12 +894,29 @@ export default {
     })
 
     const isInQueue = computed(() => {
-      return queueData.value.isInQueue
+      // Check if current IP is in queue AND matches selected room
+      if (!selectedRoom.value || !queueData.value.clientIP) return false
+      
+      const userInQueue = queueData.value.queue.find(item => 
+        item.ipAddress === queueData.value.clientIP
+      )
+      
+      // Verify that the room in queue matches the selected room
+      return userInQueue && userInQueue.roomNumber === selectedRoom.value
     })
     
     const isPhoneValid = computed(() => {
       if (!phoneNumber.value) return true
       return /^0\d{9}$/.test(phoneNumber.value)
+    })
+
+    // Get current user's queue info for verification
+    const currentQueueInfo = computed(() => {
+      if (!queueData.value.clientIP) return null
+      
+      return queueData.value.queue.find(item => 
+        item.ipAddress === queueData.value.clientIP
+      )
     })
 
     // Custom time validation
@@ -1268,9 +1295,15 @@ export default {
     }
 
     const leaveQueue = async () => {
+      if (!selectedRoom.value) {
+        alert('Vui lòng chọn phòng')
+        return
+      }
+      
       isLoading.value = true
       try {
-        await apiLeaveQueue()
+        console.log(`🚪 Leaving queue for room: ${selectedRoom.value}`)
+        await apiLeaveQueue(selectedRoom.value)
         await fetchAllData()
       } catch (error) {
         alert('Lỗi khi rời hàng đợi: ' + error.message)
@@ -1719,7 +1752,8 @@ ${machineType === 'washing' ? '🫧 Về máy giặt' : '🌪️ Về máy sấy
       zaloPhoneNumbers,
       isCurrentUserUsingMachine,
       getCurrentMachineNotes,
-      updateMachineNotes
+      updateMachineNotes,
+      currentQueueInfo
     }
   }
 }

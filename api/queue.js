@@ -89,13 +89,25 @@ router.post('/join', async (req, res) => {
 router.post('/leave', async (req, res) => {
   try {
     const clientIP = getClientIP(req)
+    const { room } = req.body  // Optional room parameter for additional verification
+    
+    console.log(`🚪 Leave queue request from IP: ${clientIP}, Room: ${room || 'not specified'}`)
     
     const currentQueue = await getQueue()
     const userInQueue = currentQueue.find(item => item.ipAddress === clientIP)
     
     if (!userInQueue) {
-      return res.status(400).json({ error: 'Not in queue' })
+      console.log(`❌ IP ${clientIP} not found in queue`)
+      return res.status(400).json({ error: 'Bạn không có trong hàng đợi' })
     }
+    
+    // Additional verification: if room is provided, make sure it matches
+    if (room && userInQueue.roomNumber !== room) {
+      console.log(`❌ Room mismatch for IP ${clientIP}: queue has ${userInQueue.roomNumber}, requested ${room}`)
+      return res.status(400).json({ error: 'Phòng không khớp với thông tin trong hàng đợi' })
+    }
+    
+    console.log(`✅ Removing ${userInQueue.roomNumber} (IP: ${clientIP}) from queue`)
     
     const updatedQueue = await removeFromQueue(clientIP)
     
