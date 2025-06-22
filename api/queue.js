@@ -63,11 +63,12 @@ router.post('/join', async (req, res) => {
       return res.status(400).json({ error: 'IP already in queue' })
     }
     
-    // Add to queue
+    // Add to queue - ensure machineType is always set
     const queueData = {
       roomNumber: room,
       phoneNumber: phoneNumber || '',
-      ipAddress: clientIP
+      ipAddress: clientIP,
+      machineType: 'any'  // Default to 'any' type for general queue
     }
     
     const updatedQueue = await addToQueue(queueData)

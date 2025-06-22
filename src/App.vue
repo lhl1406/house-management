@@ -69,6 +69,52 @@
           </div>
         </div>
 
+        <!-- Notes Input -->
+        <div class="mb-6" v-if="!isUsingMachine && selectedRoom">
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Ghi chú (tùy chọn)</label>
+          <textarea 
+            v-model="notes" 
+            placeholder="Ví dụ: Quần áo trắng, không xoắn..."
+            maxlength="200"
+            rows="3"
+            class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors duration-300 resize-none"
+          ></textarea>
+          <div class="mt-1 text-xs text-gray-500">
+            {{ notes.length }}/200 ký tự
+          </div>
+        </div>
+
+        <!-- Update Notes Section for Current User -->
+        <div class="mb-6" v-if="isUsingMachine">
+          <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4">
+            <h3 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <i class="fas fa-sticky-note text-yellow-500"></i>
+              Cập Nhật Ghi Chú
+            </h3>
+            <textarea 
+              v-model="currentNotes" 
+              placeholder="Cập nhật ghi chú nếu bạn cần đi ra ngoài..."
+              maxlength="200"
+              rows="3"
+              class="w-full p-3 border-2 border-gray-200 rounded-xl focus:border-yellow-500 focus:outline-none transition-colors duration-300 resize-none"
+            ></textarea>
+            <div class="flex items-center justify-between mt-2">
+              <div class="text-xs text-gray-500">
+                {{ currentNotes.length }}/200 ký tự
+              </div>
+              <button 
+                @click="updateMachineNotes"
+                :disabled="isLoading || currentNotes === getCurrentMachineNotes()"
+                class="px-3 py-1 bg-yellow-500 text-white rounded-lg text-xs hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <i v-if="isLoading" class="fas fa-spinner fa-spin mr-1"></i>
+                <i v-else class="fas fa-save mr-1"></i>
+                {{ isLoading ? 'Đang lưu...' : 'Lưu ghi chú' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Custom Time Input -->
         <div class="mb-6" v-if="!isUsingMachine && selectedRoom">
           <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4">
@@ -252,7 +298,7 @@
         </div>
 
         <!-- Machine Status Display -->
-        <div v-if="washingMachine || dryingMachine" class="mb-6">
+        <div v-if="washingMachines.some(m => m.status === 'in_use') || dryingMachines.some(m => m.status === 'in_use')" class="mb-6">
           <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl overflow-hidden">
             <div class="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-2">
               <h3 class="text-sm font-semibold flex items-center gap-2">
@@ -263,55 +309,132 @@
             <div class="p-4">
               <!-- Machine Status Row - Responsive: Side by side on desktop, stacked on mobile -->
               <div class="flex flex-col sm:flex-row gap-4 mb-4">
-                <!-- Washing Machine Status -->
-                <div v-if="washingMachine" class="bg-blue-50 rounded-lg p-3 flex-1">
+                <!-- All Washing Machines Status -->
+                <div class="bg-blue-50 rounded-lg p-3 flex-1">
                   <div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-tint text-blue-600"></i>
-                    <span class="font-semibold text-blue-800">Máy Giặt</span>
+                    <span class="font-semibold text-blue-800">Máy Giặt ({{ washingMachines.length }})</span>
                   </div>
-                  <div class="text-sm">
-                    <div class="mb-2">
-                      <span class="text-gray-600 font-medium">Trạng thái:</span>
-                      <div class="flex items-center gap-2 mt-1">
-                        <div class="w-2 h-2 rounded-full" :class="washingMachine.isWashing ? 'bg-blue-500 animate-pulse' : 'bg-green-500'"></div>
-                        <span class="font-semibold">{{ washingMachine.isWashing ? 'Đang Giặt' : 'Sẵn Sàng' }}</span>
+                  <div class="space-y-2">
+                    <div v-for="machine in washingMachines" :key="machine.id" class="text-sm">
+                      <div class="flex items-center justify-between">
+                        <span class="font-medium">{{ machine.name }}</span>
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full" :class="machine.status === 'in_use' ? 'bg-orange-500 animate-pulse' : 'bg-green-500'"></div>
+                          <span class="font-semibold text-xs">{{ machine.status === 'in_use' ? 'Đang Giặt' : 'Sẵn Sàng' }}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div v-if="washingUser">
-                      <span class="text-gray-600 font-medium">Người dùng:</span>
-                      <div class="text-gray-800 font-bold">{{ washingUser.roomNumber }}</div>
+                      <div v-if="machine.status === 'in_use'" class="text-xs text-gray-600 mt-1">
+                        <!-- Find which room is using this machine -->
+                        <span v-if="getRoomUsingMachine(machine.id, 'washing')">
+                          Phòng: {{ getRoomUsingMachine(machine.id, 'washing').roomNumber }}
+                        </span>
+                        <!-- Show countdown timer for all users to see -->
+                        <div v-if="getWashingCountdownForMachine(machine.id)" class="text-blue-600 font-semibold mt-1">
+                          ⏱️ {{ getWashingCountdownForMachine(machine.id) }}
+                        </div>
+                        <!-- Show notes if available -->
+                        <div v-if="getMachineNotes(machine.id)" class="text-gray-500 text-xs mt-1 italic">
+                          💬 {{ getMachineNotes(machine.id) }}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
                 
-                <!-- Drying Machine Status -->
-                <div v-if="dryingMachine" class="bg-orange-50 rounded-lg p-3 flex-1">
+                <!-- All Drying Machines Status -->
+                <div class="bg-orange-50 rounded-lg p-3 flex-1">
                   <div class="flex items-center gap-2 mb-2">
                     <i class="fas fa-wind text-orange-600"></i>
-                    <span class="font-semibold text-orange-800">Máy Sấy</span>
+                    <span class="font-semibold text-orange-800">Máy Sấy ({{ dryingMachines.length }})</span>
                   </div>
-                  <div class="text-sm">
-                    <div class="mb-2">
-                      <span class="text-gray-600 font-medium">Trạng thái:</span>
-                      <div class="flex items-center gap-2 mt-1">
-                        <div class="w-2 h-2 rounded-full" :class="dryingMachine.isDrying ? 'bg-orange-500 animate-pulse' : 'bg-green-500'"></div>
-                        <span class="font-semibold">{{ dryingMachine.isDrying ? 'Đang Sấy' : 'Sẵn Sàng' }}</span>
+                  <div class="space-y-2">
+                    <div v-for="machine in dryingMachines" :key="machine.id" class="text-sm">
+                      <div class="flex items-center justify-between">
+                        <span class="font-medium">{{ machine.name }}</span>
+                        <div class="flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full" :class="machine.status === 'in_use' ? 'bg-orange-500 animate-pulse' : 'bg-green-500'"></div>
+                          <span class="font-semibold text-xs">{{ machine.status === 'in_use' ? 'Đang Sấy' : 'Sẵn Sàng' }}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div v-if="dryingUser">
-                      <span class="text-gray-600 font-medium">Người dùng:</span>
-                      <div class="text-gray-800 font-bold">{{ dryingUser.roomNumber }}</div>
+                      <div v-if="machine.status === 'in_use'" class="text-xs text-gray-600 mt-1">
+                        <!-- Find which room is using this machine -->
+                        <span v-if="getRoomUsingMachine(machine.id, 'drying')">
+                          Phòng: {{ getRoomUsingMachine(machine.id, 'drying').roomNumber }}
+                        </span>
+                        <!-- Show countdown timer for all users to see -->
+                        <div v-if="getDryingCountdownForMachine(machine.id)" class="text-orange-600 font-semibold mt-1">
+                          ⏱️ {{ getDryingCountdownForMachine(machine.id) }}
+                        </div>
+                        <!-- Show notes if available -->
+                        <div v-if="getMachineNotes(machine.id)" class="text-gray-500 text-xs mt-1 italic">
+                          💬 {{ getMachineNotes(machine.id) }}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
               
-              <!-- Remaining Time Display -->
-              <div v-if="remainingTime > 0" class="bg-white/70 rounded-lg p-3">
+              <!-- Send Zalo to machine users -->
+              <div v-if="((washingUser && washingUser.phoneNumber && washingUser.roomNumber !== selectedRoom) || (dryingUser && dryingUser.phoneNumber && dryingUser.roomNumber !== selectedRoom)) && selectedRoom" class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 mb-4">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <i class="fab fa-telegram-plane text-green-600"></i>
+                  Liên hệ qua Zalo
+                </h4>
+                
+                <!-- Contact washing user -->
+                <div v-if="washingUser && washingUser.phoneNumber && washingUser.roomNumber !== selectedRoom" class="mb-3">
+                  <div class="text-xs text-blue-600 mb-2">
+                    📞 Liên hệ phòng {{ washingUser.roomNumber }} (đang giặt):
+                  </div>
+                  <div class="flex gap-2">
+                    <input 
+                      :value="washingUser.phoneNumber" 
+                      type="tel" 
+                      readonly
+                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50"
+                    >
+                    <button 
+                      @click="sendZaloToOtherRoom(washingUser.phoneNumber, 'washing', selectedRoom)"
+                      class="px-3 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 whitespace-nowrap"
+                    >
+                      📱 Gửi Zalo
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Contact drying user -->
+                <div v-if="dryingUser && dryingUser.phoneNumber && dryingUser.roomNumber !== selectedRoom">
+                  <div class="text-xs text-orange-600 mb-2">
+                    📞 Liên hệ phòng {{ dryingUser.roomNumber }} (đang sấy):
+                  </div>
+                  <div class="flex gap-2">
+                    <input 
+                      :value="dryingUser.phoneNumber" 
+                      type="tel" 
+                      readonly
+                      class="flex-1 p-2 border border-gray-300 rounded text-sm bg-gray-50"
+                    >
+                    <button 
+                      @click="sendZaloToOtherRoom(dryingUser.phoneNumber, 'drying', selectedRoom)"
+                      class="px-3 py-2 bg-orange-500 text-white rounded text-sm hover:bg-orange-600 whitespace-nowrap"
+                    >
+                      📱 Gửi Zalo
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Remaining Time Display for current user -->
+              <div v-if="remainingTime > 0 && isUsingMachine" class="bg-white/70 rounded-lg p-3">
                 <div class="text-center">
                   <span class="text-gray-600 font-medium">Thời gian còn lại:</span>
                   <div class="text-gray-800 font-bold text-xl countdown-display countdown-timer">
                     {{ formatCountdown(remainingTime) }}
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    {{ isUsingWashingMachine ? 'Máy Giặt' : '' }}{{ isUsingWashingMachine && isUsingDryingMachine ? ' & ' : '' }}{{ isUsingDryingMachine ? 'Máy Sấy' : '' }}
                   </div>
                 </div>
               </div>
@@ -328,18 +451,21 @@
                 <i 
                   class="fas fa-circle-notch text-4xl mb-2 block transition-all duration-500"
                   :class="[
-                    washingMachine?.isWashing ? 'text-blue-500 animate-spin-fast' : 'text-gray-300'
+                    washingMachines.some(m => m.status === 'in_use') ? 'text-blue-500' : 'text-gray-300'
                   ]"
                 ></i>
                 <div class="text-sm font-medium text-gray-600 mb-1">Máy Giặt</div>
-                <div class="text-lg font-bold countdown-display" :class="[
-                  washingMachine?.isWashing ? 'text-blue-500' : 'text-gray-400',
-                  washingMachine?.isWashing && washingRemainingTime > 0 ? 'countdown-timer' : ''
-                ]">
-                  {{ washingMachine?.isWashing && washingRemainingTime > 0 ? formatCountdown(washingRemainingTime) : formatTimeInSeconds(washingMachine?.washTime || 0) }}
+                <div v-if="washingUser" class="text-xs text-gray-500 mt-1">
+                  Thời gian tạm tính:
                 </div>
-                <div class="text-xs mt-1" :class="washingMachine?.isWashing ? 'text-blue-600' : 'text-green-600'">
-                  {{ washingMachine?.isWashing ? 'Đang hoạt động' : 'Sẵn sàng' }}
+                <div class="text-lg font-bold countdown-display" :class="[
+                  washingMachines.some(m => m.status === 'in_use') ? 'text-blue-500' : 'text-gray-400',
+                  isUsingWashingMachine && washingRemainingTime > 0 ? 'countdown-timer' : ''
+                ]">
+                  {{ isUsingWashingMachine && washingRemainingTime > 0 ? formatCountdown(washingRemainingTime) : getWashingMachineDisplayTime() }}
+                </div>
+                <div class="text-xs mt-1" :class="washingMachines.some(m => m.status === 'in_use') ? 'text-blue-600' : 'text-green-600'">
+                  {{ getWashingMachineStatus() }}
                 </div>
                 <div v-if="washingUser" class="text-xs text-gray-500 mt-1">
                   Phòng {{ washingUser.roomNumber }}
@@ -358,18 +484,21 @@
                 <i 
                   class="fas fa-wind text-4xl mb-2 block transition-all duration-500"
                   :class="[
-                    dryingMachine?.isDrying ? 'text-orange-500 animate-pulse' : 'text-gray-300'
+                    dryingMachines.some(m => m.status === 'in_use') ? 'text-orange-500 animate-pulse' : 'text-gray-300'
                   ]"
                 ></i>
                 <div class="text-sm font-medium text-gray-600 mb-1">Máy Sấy</div>
-                <div class="text-lg font-bold countdown-display" :class="[
-                  dryingMachine?.isDrying ? 'text-orange-500' : 'text-gray-400',
-                  dryingMachine?.isDrying && dryingRemainingTime > 0 ? 'countdown-timer' : ''
-                ]">
-                  {{ dryingMachine?.isDrying && dryingRemainingTime > 0 ? formatCountdown(dryingRemainingTime) : formatTimeInSeconds(dryingMachine?.dryTime || 0) }}
+                <div v-if="washingUser" class="text-xs text-gray-500 mt-1">
+                  Thời gian tạm tính:
                 </div>
-                <div class="text-xs mt-1" :class="dryingMachine?.isDrying ? 'text-orange-600' : 'text-green-600'">
-                  {{ dryingMachine?.isDrying ? 'Đang hoạt động' : 'Sẵn sàng' }}
+                <div class="text-lg font-bold countdown-display" :class="[
+                  dryingMachines.some(m => m.status === 'in_use') ? 'text-orange-500' : 'text-gray-400',
+                  isUsingDryingMachine && dryingRemainingTime > 0 ? 'countdown-timer' : ''
+                ]">
+                  {{ isUsingDryingMachine && dryingRemainingTime > 0 ? formatCountdown(dryingRemainingTime) : getDryingMachineDisplayTime() }}
+                </div>
+                <div class="text-xs mt-1" :class="dryingMachines.some(m => m.status === 'in_use') ? 'text-orange-600' : 'text-green-600'">
+                  {{ getDryingMachineStatus() }}
                 </div>
                 <div v-if="dryingUser" class="text-xs text-gray-500 mt-1">
                   Phòng {{ dryingUser.roomNumber }}
@@ -422,7 +551,7 @@
 
           <!-- Finish Washing -->
           <button
-            v-if="isUsingWashingMachine && washingMachine?.isWashing"
+            v-if="isUsingWashingMachine && washingMachines.some(m => m.status === 'in_use')"
             @click="finishWashing"
             :disabled="isLoading"
             class="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
@@ -434,7 +563,7 @@
 
           <!-- Finish Drying -->
           <button
-            v-if="isUsingDryingMachine && dryingMachine?.isDrying"
+            v-if="isUsingDryingMachine && dryingMachines.some(m => m.status === 'in_use')"
             @click="finishDrying"
             :disabled="isLoading"
             class="px-4 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
@@ -448,12 +577,12 @@
           <button
             v-if="canJoinQueue"
             @click="joinQueue"
-            :disabled="isLoading"
-            class="px-4 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2 text-sm"
+            :disabled="isLoading || !isPhoneValid"
+            class="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
           >
             <i v-if="isLoading" class="fas fa-spinner fa-spin"></i>
             <i v-else class="fas fa-users"></i>
-            {{ isLoading ? 'Đang vào hàng đợi...' : 'Vào Hàng Đợi' }}
+            {{ isLoading ? 'Đang xử lý...' : '👥 Vào Hàng Đợi' }}
           </button>
 
           <!-- Leave Queue -->
@@ -465,26 +594,16 @@
           >
             <i v-if="isLoading" class="fas fa-spinner fa-spin"></i>
             <i v-else class="fas fa-sign-out-alt"></i>
-            {{ isLoading ? 'Đang rời...' : 'Rời Hàng Đợi' }}
-          </button>
-
-          <!-- Send Zalo Notification -->
-          <button
-            v-if="selectedRoom && phoneNumber && isPhoneValid"
-            @click="sendZaloNotification('both')"
-            class="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 text-sm"
-          >
-            <i class="fab fa-telegram-plane"></i>
-            Gửi Zalo
+            {{ isLoading ? 'Đang xử lý...' : '🚪 Rời Hàng Đợi' }}
           </button>
 
           <!-- Debug Button -->
           <button
-            @click="debugState"
+            @click="() => { console.log({machines: machines, roomMachineUsage: roomMachineUsage, machineCountdowns: machineCountdowns, selectedRoom: selectedRoom}) }"
             class="px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 text-sm"
           >
             <i class="fas fa-bug"></i>
-            Debug
+            🔍 Debug
           </button>
         </div>
 
@@ -551,9 +670,14 @@
                 <div class="font-semibold text-gray-800">{{ record.roomNumber }}</div>
                 <div class="text-xs text-gray-500">{{ formatDate(record.startTime) }}</div>
               </div>
-              <div class="text-sm text-gray-600 grid grid-cols-2 gap-2">
-                <div>Giặt: {{ formatTime(record.washTime) }}</div>
-                <div>Sấy: {{ formatTime(record.dryTime) }}</div>
+              <div class="text-sm text-gray-600">
+                <div class="flex justify-between items-center">
+                  <span>{{ record.machineType === 'washing' ? 'Máy Giặt' : 'Máy Sấy' }}:</span>
+                  <span class="font-semibold">{{ formatTime(record.durationMinutes || 0) }}</span>
+                </div>
+                <div class="text-xs text-gray-500 mt-1">
+                  {{ record.machineName }}
+                </div>
               </div>
               <div v-if="record.note" class="text-xs text-gray-500 mt-2 italic">
                 "{{ record.note }}"
@@ -583,6 +707,7 @@ export default {
       getQueue,
       startWashing: apiStartWashing,
       finishWashing: apiFinishWashing,
+      updateMachineNotes: apiUpdateMachineNotes,
       joinQueue: apiJoinQueue,
       leaveQueue: apiLeaveQueue,
       checkApiConnection
@@ -591,11 +716,15 @@ export default {
     // State
     const selectedRoom = ref('')
     const phoneNumber = ref('')
+    const notes = ref('')
+    const currentNotes = ref('') // For updating notes while using machine
+    const zaloPhoneNumbers = ref({}) // For storing phone numbers to contact other rooms
     const isLoading = ref(false)
     const machines = ref([])
     const rooms = ref([])
     const historyData = ref([])
     const queueData = ref({ queue: [], clientIP: '', isInQueue: false })
+    const roomMachineUsage = ref([])
     
     // Custom time inputs
     const customTimes = ref({
@@ -611,8 +740,12 @@ export default {
     const remainingTime = ref(0)
     const washingRemainingTime = ref(0)
     const dryingRemainingTime = ref(0)
+    const machineCountdowns = ref({}) // Store countdown for each machine by ID
     const startTime = ref(null)
     const totalDuration = ref(0)
+    const isFinishing = ref(false)
+    const shouldPausePolling = ref(false)
+    const autoFinishTriggered = ref(false)
     
     let pollingInterval = null
     let countdownInterval = null
@@ -620,91 +753,126 @@ export default {
     // Computed properties
     const currentMachine = computed(() => machines.value[0] || null)
     
-    // Separate machines for washing and drying
+    // Separate machines for washing and drying - get available ones first
+    const washingMachines = computed(() => {
+      return machines.value.filter(m => m.type === 'washing')
+    })
+    
+    const dryingMachines = computed(() => {
+      return machines.value.filter(m => m.type === 'drying')
+    })
+    
+    // Get first available washing machine
     const washingMachine = computed(() => {
-      return machines.value.find(m => m.type === 'washing') || machines.value[0] || null
+      const availableWashing = washingMachines.value.find(m => m.status === 'available')
+      return availableWashing || washingMachines.value[0] || null
     })
     
+    // Get first available drying machine
     const dryingMachine = computed(() => {
-      return machines.value.find(m => m.type === 'drying') || machines.value[1] || null
+      const availableDrying = dryingMachines.value.find(m => m.status === 'available')
+      return availableDrying || dryingMachines.value[0] || null
     })
     
-    const currentUser = computed(() => {
-      if (!currentMachine.value?.currentUserIP) return null
-      return rooms.value.find(r => r.ipAddress === currentMachine.value.currentUserIP)
+    // Get currently used machines for current room
+    const currentRoomUsage = computed(() => {
+      if (!selectedRoom.value) return []
+      return roomMachineUsage.value.filter(usage => 
+        usage.roomNumber === selectedRoom.value && usage.isActive
+      )
     })
     
-    // Separate users for each machine
+    // Check if current room is using washing machine
+    const currentWashingUsage = computed(() => {
+      return currentRoomUsage.value.find(usage => usage.machineType === 'washing')
+    })
+    
+    // Check if current room is using drying machine
+    const currentDryingUsage = computed(() => {
+      return currentRoomUsage.value.find(usage => usage.machineType === 'drying')
+    })
+    
+    // Machine users based on actual usage tracking
     const washingUser = computed(() => {
-      if (!washingMachine.value) return null
+      const washingInUse = machines.value.find(m => m.type === 'washing' && m.status === 'in_use')
+      if (!washingInUse) return null
       
-      // Find user by machine_id first (more reliable)
-      let user = rooms.value.find(r => r.machineId === washingMachine.value.id && r.isUsingMachine)
+      // Find the room using this washing machine
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === washingInUse.id && u.isActive && u.machineType === 'washing'
+      )
+      if (!usage) return null
       
-      // Fallback to currentUserIP if available
-      if (!user && washingMachine.value.currentUserIP) {
-        user = rooms.value.find(r => r.ipAddress === washingMachine.value.currentUserIP)
+      return {
+        roomNumber: usage.roomNumber,
+        ipAddress: usage.ipAddress,
+        phoneNumber: usage.phoneNumber || '',
+        startTime: usage.startTime,
+        estimatedEndTime: usage.estimatedEndTime
       }
-      
-      return user || null
     })
     
     const dryingUser = computed(() => {
-      if (!dryingMachine.value) return null
+      const dryingInUse = machines.value.find(m => m.type === 'drying' && m.status === 'in_use')
+      if (!dryingInUse) return null
       
-      // Find user by machine_id first (more reliable)
-      let user = rooms.value.find(r => r.machineId === dryingMachine.value.id && r.isUsingMachine)
+      // Find the room using this drying machine
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === dryingInUse.id && u.isActive && u.machineType === 'drying'
+      )
+      if (!usage) return null
       
-      // Fallback to currentUserIP if available
-      if (!user && dryingMachine.value.currentUserIP) {
-        user = rooms.value.find(r => r.ipAddress === dryingMachine.value.currentUserIP)
+      return {
+        roomNumber: usage.roomNumber,
+        ipAddress: usage.ipAddress,
+        phoneNumber: usage.phoneNumber || '',
+        startTime: usage.startTime,
+        estimatedEndTime: usage.estimatedEndTime
       }
-      
-      return user || null
+    })
+    
+    const currentUser = computed(() => {
+      return washingUser.value || dryingUser.value
     })
     
     const isUsingMachine = computed(() => {
-      return currentUser.value?.roomNumber === selectedRoom.value
+      return currentRoomUsage.value.length > 0
     })
     
     // Separate usage checks
     const isUsingWashingMachine = computed(() => {
-      return washingUser.value?.roomNumber === selectedRoom.value
+      return !!currentWashingUsage.value
     })
     
     const isUsingDryingMachine = computed(() => {
-      return dryingUser.value?.roomNumber === selectedRoom.value
-    })
-    
-    const canUseMachine = computed(() => {
-      return currentMachine.value?.status === 'available'
+      return !!currentDryingUsage.value
     })
     
     // Separate availability checks
     const canUseWashingMachine = computed(() => {
-      return washingMachine.value?.status === 'available' || !washingMachine.value?.isWashing
+      return washingMachine.value?.status === 'available'
     })
     
     const canUseDryingMachine = computed(() => {
-      return dryingMachine.value?.status === 'available' || !dryingMachine.value?.isDrying
+      return dryingMachine.value?.status === 'available'
     })
     
     const availableRooms = computed(() => {
       const allRooms = ['101', '102', '103', '104', '105', '201', '202', '203', '204', '205']
-      const busyRooms = rooms.value.filter(r => r.isUsingMachine).map(r => r.roomNumber)
+      const busyRooms = roomMachineUsage.value
+        .filter(usage => usage.isActive)
+        .map(usage => usage.roomNumber)
       return allRooms.filter(room => !busyRooms.includes(room))
     })
     
     const busyRooms = computed(() => {
-      return rooms.value.filter(r => r.isUsingMachine).map(r => r.roomNumber)
+      return roomMachineUsage.value
+        .filter(usage => usage.isActive)
+        .map(usage => usage.roomNumber + ' - ' + (usage.machineType === 'drying' ? 'Sấy' : 'Giặt'))
     })
     
     const canStartWashing = computed(() => {
       return selectedRoom.value && canUseWashingMachine.value && !isUsingWashingMachine.value
-    })
-    
-    const canFinishWashing = computed(() => {
-      return isUsingMachine.value && currentMachine.value?.status === 'in_use'
     })
     
     const canStartDrying = computed(() => {
@@ -712,7 +880,7 @@ export default {
     })
     
     const canJoinQueue = computed(() => {
-      return selectedRoom.value && !canUseMachine.value && !isInQueue.value && !isUsingMachine.value
+      return selectedRoom.value && !canUseWashingMachine.value && !canUseDryingMachine.value && !isInQueue.value && !isUsingMachine.value
     })
 
     const isInQueue = computed(() => {
@@ -739,13 +907,71 @@ export default {
       return dryTotal > 0
     })
 
-    const isValidCustomTime = computed(() => {
-      return hasWashTime.value || hasDryTime.value
-    })
+    // Check if current user is using a specific machine
+    const isCurrentUserUsingMachine = (machineId, machineType) => {
+      if (!selectedRoom.value) return false
+      
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === machineId && 
+        u.machineType === machineType && 
+        u.roomNumber === selectedRoom.value && 
+        u.isActive
+      )
+      
+      return !!usage
+    }
+
+    // Get current machine notes for the user
+    const getCurrentMachineNotes = () => {
+      if (!selectedRoom.value || !isUsingMachine.value) return ''
+      
+      const usage = currentRoomUsage.value[0]
+      return usage?.notes || ''
+    }
+
+    // Update machine notes
+    const updateMachineNotes = async () => {
+      if (!selectedRoom.value || !isUsingMachine.value) return
+      
+      isLoading.value = true
+      try {
+        const usage = currentRoomUsage.value[0]
+        if (usage) {
+          await apiUpdateMachineNotes(selectedRoom.value, usage.machineId, currentNotes.value)
+          await fetchAllData()
+        }
+      } catch (error) {
+        alert('Lỗi khi cập nhật ghi chú: ' + error.message)
+      } finally {
+        isLoading.value = false
+      }
+    }
 
     // Methods
-    const fetchAllData = async () => {
+    const fetchRoomMachineUsage = async () => {
       try {
+        const response = await fetch('/api/room-machine-usage')
+        if (!response.ok) throw new Error('Failed to fetch room machine usage')
+        const data = await response.json()
+        roomMachineUsage.value = data || []
+      } catch (error) {
+        console.error('Error fetching room machine usage:', error)
+        roomMachineUsage.value = []
+      }
+    }
+
+    const fetchAllData = async (skipCountdownRestart = false) => {
+      try {
+        if (shouldPausePolling.value) {
+          console.log('⏸️ Polling paused during finish operation')
+          return
+        }
+        
+        console.log('🔄 Fetching all data...')
+        
+        // Fetch room machine usage first
+        await fetchRoomMachineUsage()
+        
         const [machineList, roomList, history, queue] = await Promise.all([
           getMachines(),
           getRooms(),
@@ -758,16 +984,31 @@ export default {
         historyData.value = history
         queueData.value = queue
 
+        console.log('✅ Data fetched:', {
+          machines: machineList.length,
+          rooms: roomList.length,
+          history: history.length,
+          roomMachineUsage: roomMachineUsage.value.length
+        })
+
+        // Update current notes if user is using machine
+        if (isUsingMachine.value && currentRoomUsage.value.length > 0) {
+          const usage = currentRoomUsage.value[0]
+          currentNotes.value = usage.notes || ''
+        }
+
         // Start or update countdown if any machine is in use
-        const hasActiveMachine = machineList.some(m => m.isWashing || m.isDrying)
-        if (hasActiveMachine) {
-          if (!countdownInterval) {
-            startCountdown()
+        if (!skipCountdownRestart && !isFinishing.value) {
+          const hasActiveMachine = machineList.some(m => m.status === 'in_use')
+          if (hasActiveMachine) {
+            if (!countdownInterval) {
+              startCountdown()
+            } else {
+              updateCountdown()
+            }
           } else {
-            updateCountdown()
+            stopCountdown()
           }
-        } else {
-          stopCountdown()
         }
       } catch (error) {
         console.error('Error fetching data:', error)
@@ -775,75 +1016,88 @@ export default {
     }
 
     const updateCountdown = () => {
-      // Reset all countdown timers
       remainingTime.value = 0
       washingRemainingTime.value = 0
       dryingRemainingTime.value = 0
       
       let hasActiveTimer = false
+      let shouldTriggerFinish = false
       
-      // Calculate washing machine countdown
-      if (washingMachine.value?.isWashing && washingUser.value) {
-        const user = washingUser.value
-        if (user && user.startTime) {
-          const start = new Date(user.startTime).getTime()
-          const now = Date.now()
-          const elapsed = Math.floor((now - start) / 1000)
-          const timeSeconds = washingMachine.value.washTime || 0
-          
-          washingRemainingTime.value = Math.max(0, timeSeconds - elapsed)
-          hasActiveTimer = true
-          
-          // If this is the user's machine, also set general remainingTime
-          if (user.roomNumber === selectedRoom.value) {
-            remainingTime.value = washingRemainingTime.value
-            totalDuration.value = timeSeconds
-          }
-          
-          console.log('Washing Countdown:', {
-            elapsed,
-            timeSeconds,
-            remaining: washingRemainingTime.value,
-            user: user.roomNumber
-          })
+      // Update countdown for ALL active machines
+      const activeUsages = roomMachineUsage.value.filter(usage => usage.isActive)
+      
+      activeUsages.forEach(usage => {
+        const start = new Date(usage.startTime).getTime()
+        const estimated = new Date(usage.estimatedEndTime).getTime()
+        const now = Date.now()
+        const remaining = Math.max(0, Math.floor((estimated - now) / 1000))
+        
+        // Store countdown for this machine
+        machineCountdowns.value[usage.machineId] = remaining
+        
+        // Update specific type countdowns
+        if (usage.machineType === 'washing') {
+          washingRemainingTime.value = remaining
+        } else if (usage.machineType === 'drying') {
+          dryingRemainingTime.value = remaining
         }
-      }
-      
-      // Calculate drying machine countdown
-      if (dryingMachine.value?.isDrying && dryingUser.value) {
-        const user = dryingUser.value
-        if (user && user.startTime) {
-          const start = new Date(user.startTime).getTime()
-          const now = Date.now()
-          const elapsed = Math.floor((now - start) / 1000)
-          const timeSeconds = dryingMachine.value.dryTime || 0
+        
+        // Update current user's remaining time
+        if (usage.roomNumber === selectedRoom.value) {
+          remainingTime.value = remaining
+          totalDuration.value = Math.floor((estimated - start) / 1000)
           
-          dryingRemainingTime.value = Math.max(0, timeSeconds - elapsed)
-          hasActiveTimer = true
-          
-          // If this is the user's machine, also set general remainingTime
-          if (user.roomNumber === selectedRoom.value) {
-            remainingTime.value = dryingRemainingTime.value
-            totalDuration.value = timeSeconds
+          if (remaining === 0 && !autoFinishTriggered.value) {
+            console.log(`🚨 ${usage.machineType.toUpperCase()} TIMER FINISHED - triggering auto-finish`)
+            shouldTriggerFinish = true
           }
-          
-          console.log('Drying Countdown:', {
-            elapsed,
-            timeSeconds,
-            remaining: dryingRemainingTime.value,
-            user: user.roomNumber
-          })
         }
-      }
+        
+        if (remaining > 0) {
+          hasActiveTimer = true
+        }
+      })
       
-      // If no active timer, clear countdown
+      // Clean up countdowns for inactive machines
+      Object.keys(machineCountdowns.value).forEach(machineId => {
+        const isActive = activeUsages.some(usage => usage.machineId.toString() === machineId.toString())
+        if (!isActive) {
+          delete machineCountdowns.value[machineId]
+        }
+      })
+      
       if (!hasActiveTimer) {
         startTime.value = null
         totalDuration.value = 0
         if (countdownInterval) {
           clearInterval(countdownInterval)
           countdownInterval = null
+          console.log('⏹️ Countdown stopped - no active timers')
         }
+      }
+      
+      // Trigger finish actions if needed
+      if (shouldTriggerFinish && !isFinishing.value && !autoFinishTriggered.value) {
+        console.log('⏰ TIME UP! Auto-triggering finish process...')
+        autoFinishTriggered.value = true
+        
+        setTimeout(() => {
+          // Check if washing machine timer is finished
+          if (currentWashingUsage.value && washingRemainingTime.value === 0) {
+            console.log('🧺 Auto-finishing washing for user')
+            finishWashing()
+          }
+          // Check if drying machine timer is finished  
+          else if (currentDryingUsage.value && dryingRemainingTime.value === 0) {
+            console.log('🌪️ Auto-finishing drying for user')
+            finishDrying()
+          }
+          // If no valid condition, reset the trigger
+          else {
+            console.log('⚠️ No valid finish condition, resetting autoFinishTriggered')
+            autoFinishTriggered.value = false
+          }
+        }, 500)
       }
     }
 
@@ -852,27 +1106,10 @@ export default {
         clearInterval(countdownInterval)
       }
       
-      // Update countdown immediately
       updateCountdown()
       
       countdownInterval = setInterval(() => {
         updateCountdown()
-        
-        if (remainingTime.value <= 0) {
-          console.log('Time up!')
-          
-          // Check if washing machine finished and user is using it
-          if (washingMachine.value?.isWashing && isUsingWashingMachine.value) {
-            console.log('Washing complete for user')
-            finishWashing()
-          }
-          
-          // Check if drying machine finished and user is using it
-          if (dryingMachine.value?.isDrying && isUsingDryingMachine.value) {
-            console.log('Drying complete for user')
-            finishDrying()
-          }
-        }
       }, 1000)
       
       console.log('Countdown started')
@@ -890,14 +1127,14 @@ export default {
       if (!selectedRoom.value || !washingMachine.value) return
       
       isLoading.value = true
+      autoFinishTriggered.value = false
+      
       try {
-        // Convert custom times to seconds
         const washTimeSeconds = (customTimes.value.washHours || 0) * 3600 + 
                                (customTimes.value.washMinutes || 0) * 60 + 
                                (customTimes.value.washSeconds || 0)
         
-        // Start washing with the washing machine
-        await apiStartWashing(selectedRoom.value, washingMachine.value.id, washTimeSeconds, 0, '')
+        await apiStartWashing(selectedRoom.value, washingMachine.value.id, washTimeSeconds, 0, notes.value, phoneNumber.value)
         await fetchAllData()
         startCountdown()
       } catch (error) {
@@ -911,14 +1148,14 @@ export default {
       if (!selectedRoom.value || !dryingMachine.value) return
       
       isLoading.value = true
+      autoFinishTriggered.value = false
+      
       try {
-        // Convert dry time to seconds
         const dryTimeSeconds = (customTimes.value.dryHours || 0) * 3600 + 
                               (customTimes.value.dryMinutes || 0) * 60 + 
                               (customTimes.value.drySeconds || 0)
         
-        // Start drying with the drying machine
-        await apiStartWashing(selectedRoom.value, dryingMachine.value.id, 0, dryTimeSeconds, '')
+        await apiStartWashing(selectedRoom.value, dryingMachine.value.id, 0, dryTimeSeconds, notes.value, phoneNumber.value)
         await fetchAllData()
         startCountdown()
       } catch (error) {
@@ -929,42 +1166,90 @@ export default {
     }
 
     const finishWashing = async () => {
+      if (isFinishing.value) return
+      
+      console.log('🛑 STARTING FINISH PROCESS')
       isLoading.value = true
+      isFinishing.value = true
+      shouldPausePolling.value = true
+      
       try {
-        await apiFinishWashing(selectedRoom.value)
-        await fetchAllData()
-        stopCountdown()
+        console.log('Finishing washing for room:', selectedRoom.value)
         
-        // Send Zalo notification if phone number is provided
+        // Get the washing machine ID from current usage
+        const machineId = currentWashingUsage.value?.machineId
+        if (!machineId) {
+          throw new Error('Không tìm thấy máy giặt đang sử dụng')
+        }
+        
+        stopCountdown()
+        await apiFinishWashing(selectedRoom.value, machineId)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        await fetchAllData(true)
+        
         if (phoneNumber.value && isPhoneValid.value) {
           setTimeout(() => {
             sendZaloNotification('washing')
           }, 500)
         }
+        
+        console.log('✅ Washing finished successfully')
       } catch (error) {
+        console.error('Error finishing washing:', error)
         alert('Lỗi khi hoàn thành giặt: ' + error.message)
       } finally {
         isLoading.value = false
+        isFinishing.value = false
+        shouldPausePolling.value = false
+        autoFinishTriggered.value = false
+        
+        setTimeout(() => {
+          fetchAllData(true)
+        }, 2000)
       }
     }
 
     const finishDrying = async () => {
+      if (isFinishing.value) return
+      
+      console.log('🛑 STARTING FINISH PROCESS')
       isLoading.value = true
+      isFinishing.value = true
+      shouldPausePolling.value = true
+      
       try {
-        await apiFinishWashing(selectedRoom.value) // Use same API endpoint for now
-        await fetchAllData()
-        stopCountdown()
+        console.log('Finishing drying for room:', selectedRoom.value)
         
-        // Send Zalo notification if phone number is provided
+        // Get the drying machine ID from current usage
+        const machineId = currentDryingUsage.value?.machineId
+        if (!machineId) {
+          throw new Error('Không tìm thấy máy sấy đang sử dụng')
+        }
+        
+        stopCountdown()
+        await apiFinishWashing(selectedRoom.value, machineId)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        await fetchAllData(true)
+        
         if (phoneNumber.value && isPhoneValid.value) {
           setTimeout(() => {
             sendZaloNotification('drying')
           }, 500)
         }
+        
+        console.log('✅ Drying finished successfully')
       } catch (error) {
+        console.error('Error finishing drying:', error)
         alert('Lỗi khi hoàn thành sấy: ' + error.message)
       } finally {
         isLoading.value = false
+        isFinishing.value = false
+        shouldPausePolling.value = false
+        autoFinishTriggered.value = false
+        
+        setTimeout(() => {
+          fetchAllData(true)
+        }, 2000)
       }
     }
 
@@ -1003,33 +1288,32 @@ export default {
     }
 
     const getCurrentStatus = () => {
-      if (!washingMachine.value && !dryingMachine.value) return 'Đang tải...'
+      if (washingMachines.value.length === 0 && dryingMachines.value.length === 0) return 'Đang tải...'
       
       const statuses = []
       
-      if (washingMachine.value?.isWashing) {
-        statuses.push('Máy giặt đang hoạt động')
-      } else if (canUseWashingMachine.value) {
-        statuses.push('Máy giặt sẵn sàng')
+      const washingInUse = washingMachines.value.some(m => m.status === 'in_use')
+      const dryingInUse = dryingMachines.value.some(m => m.status === 'in_use')
+      const washingAvailable = washingMachines.value.some(m => m.status === 'available')
+      const dryingAvailable = dryingMachines.value.some(m => m.status === 'available')
+      
+      if (washingInUse && washingAvailable) {
+        statuses.push('Máy giặt: Một đang hoạt động, một sẵn sàng')
+      } else if (washingInUse) {
+        statuses.push('Máy giặt: Tất cả đang hoạt động')
+      } else if (washingAvailable) {
+        statuses.push('Máy giặt: Tất cả sẵn sàng')
       }
       
-      if (dryingMachine.value?.isDrying) {
-        statuses.push('Máy sấy đang hoạt động')
-      } else if (canUseDryingMachine.value) {
-        statuses.push('Máy sấy sẵn sàng')
+      if (dryingInUse && dryingAvailable) {
+        statuses.push('Máy sấy: Một đang hoạt động, một sẵn sàng')
+      } else if (dryingInUse) {
+        statuses.push('Máy sấy: Tất cả đang hoạt động')
+      } else if (dryingAvailable) {
+        statuses.push('Máy sấy: Tất cả sẵn sàng')
       }
       
-      if (statuses.length === 0) return 'Cả hai máy đang bận'
-      if (statuses.length === 1) return statuses[0]
-      
-      const runningCount = statuses.filter(s => s.includes('đang hoạt động')).length
-      const readyCount = statuses.filter(s => s.includes('sẵn sàng')).length
-      
-      if (runningCount === 2) return 'Cả hai máy đang hoạt động'
-      if (readyCount === 2) return 'Cả hai máy sẵn sàng'
-      if (runningCount === 1 && readyCount === 1) return 'Một máy hoạt động, một máy sẵn sàng'
-      
-      return 'Trạng thái hỗn hợp'
+      return statuses.join(' | ') || 'Tất cả máy đang bận'
     }
 
     const getStatusColor = (status) => {
@@ -1049,8 +1333,15 @@ export default {
     }
 
     const formatTime = (minutes) => {
-      const hours = Math.floor(minutes / 60)
-      const mins = minutes % 60
+      // Handle invalid or null values
+      if (!minutes || isNaN(minutes) || minutes < 0) {
+        return '0m'
+      }
+      
+      const totalMinutes = Math.round(Number(minutes))
+      const hours = Math.floor(totalMinutes / 60)
+      const mins = totalMinutes % 60
+      
       if (hours > 0) {
         return `${hours}h ${mins}m`
       }
@@ -1058,9 +1349,15 @@ export default {
     }
 
     const formatTimeInSeconds = (seconds) => {
-      const hours = Math.floor(seconds / 3600)
-      const minutes = Math.floor((seconds % 3600) / 60)
-      const secs = seconds % 60
+      // Handle invalid or null values
+      if (!seconds || isNaN(seconds) || seconds < 0) {
+        return '0s'
+      }
+      
+      const totalSeconds = Math.round(Number(seconds))
+      const hours = Math.floor(totalSeconds / 3600)
+      const minutes = Math.floor((totalSeconds % 3600) / 60)
+      const secs = totalSeconds % 60
       
       if (hours > 0) {
         return `${hours}h ${minutes}m ${secs}s`
@@ -1072,9 +1369,15 @@ export default {
     }
 
     const formatCountdown = (seconds) => {
-      const hours = Math.floor(seconds / 3600)
-      const minutes = Math.floor((seconds % 3600) / 60)
-      const secs = seconds % 60
+      // Handle invalid or null values
+      if (!seconds || isNaN(seconds) || seconds < 0) {
+        return '00:00'
+      }
+      
+      const totalSeconds = Math.max(0, Math.round(Number(seconds)))
+      const hours = Math.floor(totalSeconds / 3600)
+      const minutes = Math.floor((totalSeconds % 3600) / 60)
+      const secs = totalSeconds % 60
       
       if (hours > 0) {
         return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
@@ -1160,11 +1463,9 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
 
 📍 Nhà trọ thông minh - Hệ thống quản lý máy giặt tự động`
 
-      // Create Zalo message URL
       const phoneNumberClean = phoneNumber.value.replace(/\D/g, '')
       const zaloUrl = `https://zalo.me/${phoneNumberClean}?message=${encodeURIComponent(message)}`
 
-      // Copy message to clipboard
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(message).then(() => {
           console.log('Message copied to clipboard')
@@ -1173,7 +1474,6 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
         })
       }
 
-      // Open Zalo
       window.open(zaloUrl, '_blank')
       
       alert('✅ Đã mở Zalo để gửi thông báo!\n📋 Tin nhắn cũng đã được copy vào clipboard.')
@@ -1187,52 +1487,133 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
       })
     }
 
-    const debugState = () => {
-      console.log('=== DEBUG STATE ===')
-      console.log('Machines:', machines.value)
-      console.log('Rooms:', rooms.value)
-      console.log('Queue:', queueData.value)
-      console.log('Selected Room:', selectedRoom.value)
-      console.log('Current Machine:', currentMachine.value)
-      console.log('Current User:', currentUser.value)
-      console.log('Is Using Machine:', isUsingMachine.value)
-      console.log('Can Use Machine:', canUseMachine.value)
-      console.log('Custom Times:', customTimes.value)
-      console.log('Remaining Time:', remainingTime.value)
-      console.log('=== SEPARATE MACHINES ===')
-      console.log('Washing Machine:', washingMachine.value)
-      console.log('Drying Machine:', dryingMachine.value)
-      console.log('Washing User:', washingUser.value)
-      console.log('Drying User:', dryingUser.value)
-      console.log('Is Using Washing Machine:', isUsingWashingMachine.value)
-      console.log('Is Using Drying Machine:', isUsingDryingMachine.value)
+    const getRoomUsingMachine = (machineId, machineType) => {
+      return roomMachineUsage.value.find(usage => 
+        usage.machineId === machineId && 
+        usage.machineType === machineType && 
+        usage.isActive
+      )
+    }
+
+    const getWashingMachineStatus = () => {
+      const inUseCount = washingMachines.value.filter(m => m.status === 'in_use').length
+      const totalCount = washingMachines.value.length
       
-      // Debug individual machine search
-      if (machines.value.length > 0) {
-        console.log('=== MACHINE SEARCH DEBUG ===')
-        console.log('All machines:', machines.value.map(m => ({ id: m.id, name: m.name, type: m.type })))
-        console.log('Looking for washing type:', machines.value.find(m => m.type === 'washing'))
-        console.log('Looking for drying type:', machines.value.find(m => m.type === 'drying'))
-        console.log('Fallback index [0]:', machines.value[0])
-        console.log('Fallback index [1]:', machines.value[1])
+      if (inUseCount === 0) return 'Tất cả sẵn sàng'
+      if (inUseCount === totalCount) return 'Tất cả đang hoạt động'
+      return `${inUseCount}/${totalCount} đang hoạt động`
+    }
+
+    const getDryingMachineStatus = () => {
+      const inUseCount = dryingMachines.value.filter(m => m.status === 'in_use').length
+      const totalCount = dryingMachines.value.length
+      
+      if (inUseCount === 0) return 'Tất cả sẵn sàng'
+      if (inUseCount === totalCount) return 'Tất cả đang hoạt động'
+      return `${inUseCount}/${totalCount} đang hoạt động`
+    }
+
+    const getWashingMachineDisplayTime = () => {
+      // If user is using washing machine and has remaining time, show that
+      if (isUsingWashingMachine.value && washingRemainingTime.value > 0) {
+        return formatCountdown(washingRemainingTime.value)
       }
       
-      // Debug room-machine relationship
-      if (rooms.value.length > 0) {
-        console.log('=== ROOM-MACHINE RELATIONSHIP ===')
-        rooms.value.forEach(room => {
-          if (room.isUsingMachine) {
-            console.log(`Room ${room.roomNumber}:`, {
-              isUsingMachine: room.isUsingMachine,
-              machineId: room.machineId,
-              ipAddress: room.ipAddress,
-              startTime: room.startTime
-            })
-          }
+      // Otherwise show total wash time set by user
+      const washTotal = (customTimes.value.washHours || 0) * 3600 + 
+                       (customTimes.value.washMinutes || 0) * 60 + 
+                       (customTimes.value.washSeconds || 0)
+      return formatTimeInSeconds(washTotal)
+    }
+
+    const getDryingMachineDisplayTime = () => {
+      // If user is using drying machine and has remaining time, show that
+      if (isUsingDryingMachine.value && dryingRemainingTime.value > 0) {
+        return formatCountdown(dryingRemainingTime.value)
+      }
+      
+      // Otherwise show total dry time set by user
+      const dryTotal = (customTimes.value.dryHours || 0) * 3600 + 
+                      (customTimes.value.dryMinutes || 0) * 60 + 
+                      (customTimes.value.drySeconds || 0)
+      return formatTimeInSeconds(dryTotal)
+    }
+
+    // NEW METHODS for showing countdown and notes for all rooms
+    const getWashingCountdownForMachine = (machineId) => {
+      const countdown = machineCountdowns.value[machineId]
+      if (!countdown || countdown <= 0) return null
+      
+      // Verify this is a washing machine
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === machineId && 
+        u.machineType === 'washing' && 
+        u.isActive
+      )
+      
+      if (!usage) return null
+      
+      return formatCountdown(countdown)
+    }
+
+    const getDryingCountdownForMachine = (machineId) => {
+      const countdown = machineCountdowns.value[machineId]
+      if (!countdown || countdown <= 0) return null
+      
+      // Verify this is a drying machine
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === machineId && 
+        u.machineType === 'drying' && 
+        u.isActive
+      )
+      
+      if (!usage) return null
+      
+      return formatCountdown(countdown)
+    }
+
+    const getMachineNotes = (machineId) => {
+      const usage = roomMachineUsage.value.find(u => 
+        u.machineId === machineId && 
+        u.isActive
+      )
+      
+      return usage?.notes || null
+    }
+
+    // NEW METHOD: Send Zalo notification to another room
+    const sendZaloToOtherRoom = (targetPhoneNumber, machineType, yourRoom) => {
+      if (!targetPhoneNumber || !isPhoneValid.value) {
+        alert('Vui lòng nhập số Zalo hợp lệ')
+        return
+      }
+
+      const message = `🏠 THÔNG BÁO TỪ NHÀ TRỌ
+
+📞 Phòng ${yourRoom} muốn liên hệ với bạn
+
+${machineType === 'washing' ? '🫧 Về máy giặt' : '🌪️ Về máy sấy'}
+
+💬 Vui lòng liên hệ lại để trao đổi thêm.
+
+⏰ ${new Date().toLocaleString('vi-VN')}
+
+📍 Nhà trọ thông minh - Hệ thống thông báo tự động`
+
+      const phoneNumberClean = targetPhoneNumber.replace(/\D/g, '')
+      const zaloUrl = `https://zalo.me/${phoneNumberClean}?message=${encodeURIComponent(message)}`
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(message).then(() => {
+          console.log('Message copied to clipboard')
+        }).catch(err => {
+          console.error('Failed to copy message:', err)
         })
       }
+
+      window.open(zaloUrl, '_blank')
       
-      alert('Debug info đã được in ra console. Mở Developer Tools (F12) để xem.')
+      alert('✅ Đã mở Zalo để gửi thông báo!\n📋 Tin nhắn cũng đã được copy vào clipboard.')
     }
 
     // Lifecycle
@@ -1240,11 +1621,9 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
       await checkApiConnection()
       await fetchAllData()
       
-      // Start polling for updates
       pollingInterval = setInterval(fetchAllData, 5000)
       
-      // Start countdown if any machine is in use
-      const hasActiveMachine = machines.value.some(m => m.isWashing || m.isDrying)
+      const hasActiveMachine = machines.value.some(m => m.status === 'in_use')
       if (hasActiveMachine) {
         startCountdown()
       }
@@ -1272,31 +1651,35 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
       remainingTime,
       washingRemainingTime,
       dryingRemainingTime,
+      machineCountdowns,
+      roomMachineUsage,
       
       // Computed
       currentMachine,
       washingMachine,
       dryingMachine,
+      washingMachines,
+      dryingMachines,
       currentUser,
       washingUser,
       dryingUser,
       isUsingMachine,
       isUsingWashingMachine,
       isUsingDryingMachine,
-      canUseMachine,
       canUseWashingMachine,
       canUseDryingMachine,
       availableRooms,
       busyRooms,
       canStartWashing,
-      canFinishWashing,
       canStartDrying,
       canJoinQueue,
       isInQueue,
       isPhoneValid,
-      isValidCustomTime,
       hasWashTime,
       hasDryTime,
+      currentRoomUsage,
+      currentWashingUsage,
+      currentDryingUsage,
       
       // API state
       isConnected,
@@ -1322,7 +1705,21 @@ ${machineIcon} Phòng: ${selectedRoom.value || 'N/A'}
       clearAllTimes,
       sendZaloNotification,
       formatDate,
-      debugState
+      getRoomUsingMachine,
+      getWashingMachineStatus,
+      getDryingMachineStatus,
+      getWashingMachineDisplayTime,
+      getDryingMachineDisplayTime,
+      getWashingCountdownForMachine,
+      getDryingCountdownForMachine,
+      getMachineNotes,
+      sendZaloToOtherRoom,
+      notes,
+      currentNotes,
+      zaloPhoneNumbers,
+      isCurrentUserUsingMachine,
+      getCurrentMachineNotes,
+      updateMachineNotes
     }
   }
 }

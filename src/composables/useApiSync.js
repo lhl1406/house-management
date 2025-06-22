@@ -163,8 +163,13 @@ export function useApiSync() {
     }
   }
 
-  const startWashing = async (roomNumber, machineId, washTime, dryTime, notes) => {
+  const startWashing = async (roomNumber, machineId, washTime, dryTime, notes, phoneNumber) => {
     try {
+      // Calculate estimated end time based on wash time and dry time
+      const totalTimeSeconds = (washTime || 0) + (dryTime || 0)
+      const now = new Date()
+      const estimatedEndTime = new Date(now.getTime() + totalTimeSeconds * 1000).toISOString()
+      
       const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/start-washing`, {
         method: 'POST',
         headers: {
@@ -172,9 +177,9 @@ export function useApiSync() {
         },
         body: JSON.stringify({
           machineId: machineId || 1,
-          washTime: washTime,  // Now expects seconds
-          dryTime: dryTime,    // Now expects seconds
-          notes: notes || ''
+          estimatedEndTime: estimatedEndTime,
+          notes: notes || '',
+          phoneNumber: phoneNumber || ''
         })
       })
       
@@ -195,13 +200,16 @@ export function useApiSync() {
     }
   }
 
-  const finishWashing = async (roomNumber) => {
+  const finishWashing = async (roomNumber, machineId) => {
     try {
       const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/finish-washing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+          machineId: machineId
+        })
       })
       
       if (!response.ok) {
@@ -216,6 +224,36 @@ export function useApiSync() {
     } catch (error) {
       console.error('Error finishing washing:', error)
       connectionError.value = 'Lỗi hoàn thành giặt'
+      isConnected.value = false
+      throw error
+    }
+  }
+
+  const updateMachineNotes = async (roomNumber, machineId, notes) => {
+    try {
+      const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/update-notes`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          machineId: machineId,
+          notes: notes || ''
+        })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update notes')
+      }
+      
+      const data = await response.json()
+      isConnected.value = true
+      connectionError.value = ''
+      return data
+    } catch (error) {
+      console.error('Error updating notes:', error)
+      connectionError.value = 'Lỗi cập nhật ghi chú'
       isConnected.value = false
       throw error
     }
@@ -453,6 +491,7 @@ export function useApiSync() {
     createOrUpdateRoom,
     startWashing,
     finishWashing,
+    updateMachineNotes,
     
     // History API
     getHistory,

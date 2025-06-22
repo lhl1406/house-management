@@ -111,3 +111,10 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test 
 .vercel
+
+# Test files and results
+tests/
+test-results/
+playwright-report/
+playwright.config.js
+.env

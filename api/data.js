@@ -1,5 +1,5 @@
-// In-memory data store (will reset on server restart)
-// For production, you might want to use a real database
+// Database integration with fallback support
+// Production-ready database integration
 
 const {
   initializeDatabase,
@@ -7,12 +7,21 @@ const {
   // Machines
   getMachines,
   getMachineById,
+  getMachinesByType,
+  getAvailableMachines,
   updateMachine,
   
   // Rooms
   getRooms,
   getRoomByNumber,
+  getRoomByIP,
   createOrUpdateRoom,
+  
+  // Room Machine Usage
+  getRoomMachineUsage,
+  startMachineUsage,
+  finishMachineUsage,
+  updateMachineUsageNotes,
   
   // History
   getHistory,
@@ -24,9 +33,8 @@ const {
   removeFromQueue,
   getNextInQueue,
   
-  // Backwards compatibility
-  getMachineState,
-  updateMachineState
+  // Statistics
+  getStatistics
 } = require('./db')
 
 // Initialize database on module load
@@ -40,8 +48,7 @@ const initDB = async () => {
       console.log('Database connection established')
     } catch (error) {
       console.error('Failed to initialize database:', error)
-      // Fallback to in-memory storage if database fails
-      console.log('Falling back to in-memory storage')
+      throw error
     }
   }
 }
@@ -57,19 +64,7 @@ const getMachinesWithFallback = async () => {
     return await getMachines()
   } catch (error) {
     console.error('Database error getting machines:', error)
-    return [{
-      id: 1,
-      name: 'Máy giặt chính',
-      status: 'available',
-      isWashing: false,
-      isDrying: false,
-      washTime: 0,
-      dryTime: 0,
-      currentUserIP: '',
-      currentNote: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }]
+    throw error
   }
 }
 
@@ -79,7 +74,27 @@ const getMachineByIdWithFallback = async (id) => {
     return await getMachineById(id)
   } catch (error) {
     console.error('Database error getting machine by id:', error)
-    return null
+    throw error
+  }
+}
+
+const getMachinesByTypeWithFallback = async (type) => {
+  try {
+    await initDB()
+    return await getMachinesByType(type)
+  } catch (error) {
+    console.error('Database error getting machines by type:', error)
+    throw error
+  }
+}
+
+const getAvailableMachinesWithFallback = async (type = null) => {
+  try {
+    await initDB()
+    return await getAvailableMachines(type)
+  } catch (error) {
+    console.error('Database error getting available machines:', error)
+    throw error
   }
 }
 
@@ -89,7 +104,7 @@ const updateMachineWithFallback = async (id, updates) => {
     return await updateMachine(id, updates)
   } catch (error) {
     console.error('Database error updating machine:', error)
-    return null
+    throw error
   }
 }
 
@@ -101,7 +116,7 @@ const getRoomsWithFallback = async () => {
     return await getRooms()
   } catch (error) {
     console.error('Database error getting rooms:', error)
-    return []
+    throw error
   }
 }
 
@@ -111,7 +126,17 @@ const getRoomByNumberWithFallback = async (roomNumber) => {
     return await getRoomByNumber(roomNumber)
   } catch (error) {
     console.error('Database error getting room by number:', error)
-    return null
+    throw error
+  }
+}
+
+const getRoomByIPWithFallback = async (ipAddress) => {
+  try {
+    await initDB()
+    return await getRoomByIP(ipAddress)
+  } catch (error) {
+    console.error('Database error getting room by IP:', error)
+    throw error
   }
 }
 
@@ -121,32 +146,61 @@ const createOrUpdateRoomWithFallback = async (roomData) => {
     return await createOrUpdateRoom(roomData)
   } catch (error) {
     console.error('Database error creating/updating room:', error)
-    return {
-      id: Date.now(),
-      roomNumber: roomData.roomNumber,
-      phoneNumber: roomData.phoneNumber || '',
-      isUsingMachine: roomData.isUsingMachine || false,
-      machineId: roomData.machineId || null,
-      machineName: '',
-      startTime: roomData.startTime || null,
-      estimatedEndTime: roomData.estimatedEndTime || null,
-      notes: roomData.notes || '',
-      ipAddress: roomData.ipAddress || '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
+    throw error
+  }
+}
+
+// ============= ROOM MACHINE USAGE API =============
+
+const getRoomMachineUsageWithFallback = async (roomNumber = null, isActive = true) => {
+  try {
+    await initDB()
+    return await getRoomMachineUsage(roomNumber, isActive)
+  } catch (error) {
+    console.error('Database error getting room machine usage:', error)
+    throw error
+  }
+}
+
+const startMachineUsageWithFallback = async (usageData) => {
+  try {
+    await initDB()
+    return await startMachineUsage(usageData)
+  } catch (error) {
+    console.error('Database error starting machine usage:', error)
+    throw error
+  }
+}
+
+const finishMachineUsageWithFallback = async (machineId, roomNumber) => {
+  try {
+    await initDB()
+    return await finishMachineUsage(machineId, roomNumber)
+  } catch (error) {
+    console.error('Database error finishing machine usage:', error)
+    throw error
+  }
+}
+
+const updateMachineUsageNotesWithFallback = async (machineId, roomNumber, notes) => {
+  try {
+    await initDB()
+    return await updateMachineUsageNotes(machineId, roomNumber, notes)
+  } catch (error) {
+    console.error('Database error updating machine usage notes:', error)
+    throw error
   }
 }
 
 // ============= QUEUE API =============
 
-const getQueueWithFallback = async () => {
+const getQueueWithFallback = async (machineType = null) => {
   try {
     await initDB()
-    return await getQueue()
+    return await getQueue(machineType)
   } catch (error) {
     console.error('Database error getting queue:', error)
-    return []
+    throw error
   }
 }
 
@@ -156,62 +210,31 @@ const addToQueueWithFallback = async (queueData) => {
     return await addToQueue(queueData)
   } catch (error) {
     console.error('Database error adding to queue:', error)
-    return []
+    throw error
   }
 }
 
-const removeFromQueueWithFallback = async (ipAddress) => {
+const removeFromQueueWithFallback = async (ipAddress, machineType = null) => {
   try {
     await initDB()
-    return await removeFromQueue(ipAddress)
+    return await removeFromQueue(ipAddress, machineType)
   } catch (error) {
     console.error('Database error removing from queue:', error)
-    return []
+    throw error
   }
 }
 
-const getNextInQueueWithFallback = async () => {
+const getNextInQueueWithFallback = async (machineType = null) => {
   try {
     await initDB()
-    return await getNextInQueue()
+    return await getNextInQueue(machineType)
   } catch (error) {
     console.error('Database error getting next in queue:', error)
-    return null
+    throw error
   }
 }
 
-// ============= BACKWARDS COMPATIBILITY =============
-
-const getMachineStateWithFallback = async () => {
-  try {
-    await initDB()
-    return await getMachineState()
-  } catch (error) {
-    console.error('Database error, using fallback:', error)
-    // Fallback data
-    return {
-      isWashing: false,
-      isDrying: false,
-      washTime: 0,
-      dryTime: 0,
-      selectedRoom: '',
-      currentNote: '',
-      currentUserIP: '',
-      timestamp: Date.now(),
-      lastUpdated: new Date().toISOString()
-    }
-  }
-}
-
-const updateMachineStateWithFallback = async (newState) => {
-  try {
-    await initDB()
-    return await updateMachineState(newState)
-  } catch (error) {
-    console.error('Database error updating state:', error)
-    return newState
-  }
-}
+// ============= HISTORY API =============
 
 const getHistoryWithFallback = async (limit = 50) => {
   try {
@@ -219,7 +242,7 @@ const getHistoryWithFallback = async (limit = 50) => {
     return await getHistory(limit)
   } catch (error) {
     console.error('Database error getting history:', error)
-    return []
+    throw error
   }
 }
 
@@ -228,41 +251,58 @@ const addHistoryRecordWithFallback = async (record) => {
     await initDB()
     return await addHistoryRecord(record)
   } catch (error) {
-    console.error('Database error adding history:', error)
-    return {
-      id: Date.now(),
-      machineId: record.machineId || 1,
-      machineName: 'Máy giặt chính',
-      roomNumber: record.roomNumber || '',
-      washTime: record.washTime || 0,
-      dryTime: record.dryTime || 0,
-      totalTime: record.totalTime || 0,
-      note: record.note || '',
-      startTime: record.startTime || new Date().toISOString(),
-      endTime: record.endTime || new Date().toISOString(),
-      createdAt: new Date().toISOString()
-    }
+    console.error('Database error adding history record:', error)
+    throw error
   }
 }
 
+// ============= STATISTICS API =============
+
+const getStatisticsWithFallback = async () => {
+  try {
+    await initDB()
+    return await getStatistics()
+  } catch (error) {
+    console.error('Database error getting statistics:', error)
+    throw error
+  }
+}
+
+// ============= EXPORTS =============
+
 module.exports = {
-  // New APIs
+  // Database initialization
+  initializeDatabase: initDB,
+  
+  // Machines
   getMachines: getMachinesWithFallback,
   getMachineById: getMachineByIdWithFallback,
+  getMachinesByType: getMachinesByTypeWithFallback,
+  getAvailableMachines: getAvailableMachinesWithFallback,
   updateMachine: updateMachineWithFallback,
   
+  // Rooms
   getRooms: getRoomsWithFallback,
   getRoomByNumber: getRoomByNumberWithFallback,
+  getRoomByIP: getRoomByIPWithFallback,
   createOrUpdateRoom: createOrUpdateRoomWithFallback,
   
+  // Room Machine Usage
+  getRoomMachineUsage: getRoomMachineUsageWithFallback,
+  startMachineUsage: startMachineUsageWithFallback,
+  finishMachineUsage: finishMachineUsageWithFallback,
+  updateMachineUsageNotes: updateMachineUsageNotesWithFallback,
+  
+  // History
+  getHistory: getHistoryWithFallback,
+  addHistoryRecord: addHistoryRecordWithFallback,
+  
+  // Queue
   getQueue: getQueueWithFallback,
   addToQueue: addToQueueWithFallback,
   removeFromQueue: removeFromQueueWithFallback,
   getNextInQueue: getNextInQueueWithFallback,
   
-  // Backwards compatibility
-  getMachineState: getMachineStateWithFallback,
-  updateMachineState: updateMachineStateWithFallback,
-  getHistory: getHistoryWithFallback,
-  addHistoryRecord: addHistoryRecordWithFallback
+  // Statistics
+  getStatistics: getStatisticsWithFallback
 } 

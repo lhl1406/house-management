@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test-db": "node test-db.js"
+    "test-db": "node test-db.js",
+    "test-turso": "node test-turso.js"
   },
   "dependencies": {
     "@libsql/client": "^0.15.9",

@@ -10,12 +10,18 @@
     "preview": "vite preview",
     "api": "cd api && npm run dev",
     "dev:full": "concurrently \"npm run api\" \"npm run dev\"",
-    "start": "concurrently \"npm run api\" \"npm run preview\""
+    "start": "concurrently \"npm run api\" \"npm run preview\"",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:setup": "playwright install"
   },
   "dependencies": {
     "vue": "^3.3.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.53.1",
     "@vitejs/plugin-vue": "^4.2.3",
     "autoprefixer": "^10.4.14",
     "concurrently": "^8.2.2",

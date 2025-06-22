@@ -17,12 +17,29 @@ const queueHandler = require('./queue')
 const machinesHandler = require('./machines')
 const roomsHandler = require('./rooms')
 
+// Import room machine usage functions
+const { getRoomMachineUsage } = require('./data')
+
 // Routes
-app.use('/api/machine-state', machineStateHandler) // Backwards compatibility
 app.use('/api/machines', machinesHandler)
 app.use('/api/rooms', roomsHandler)
 app.use('/api/history', historyHandler)
 app.use('/api/queue', queueHandler)
+app.use('/api/machine-state', machineStateHandler)
+
+// Add room machine usage endpoint
+app.get('/api/room-machine-usage', async (req, res) => {
+  try {
+    const roomNumber = req.query.roomNumber || null
+    const isActive = req.query.isActive !== undefined ? req.query.isActive === 'true' : true
+    
+    const usage = await getRoomMachineUsage(roomNumber, isActive)
+    res.json(usage)
+  } catch (error) {
+    console.error('Error getting room machine usage:', error)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
