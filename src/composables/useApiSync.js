@@ -170,16 +170,22 @@ export function useApiSync() {
       const now = new Date()
       const estimatedEndTime = new Date(now.getTime() + totalTimeSeconds * 1000).toISOString()
       
-      const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/start-washing`, {
+      // For now, use legacy machine-state API for compatibility
+      // In the future, we can use the new service-based API
+      const response = await fetch(`${getApiUrl()}/api/machine-state`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          machineId: machineId || 1,
-          estimatedEndTime: estimatedEndTime,
+          isWashing: washTime > 0,
+          isDrying: dryTime > 0,
+          washTime: washTime,
+          dryTime: dryTime,
+          roomNumber: roomNumber,
           notes: notes || '',
-          phoneNumber: phoneNumber || ''
+          phoneNumber: phoneNumber || '',
+          estimatedEndTime: estimatedEndTime
         })
       })
       
@@ -202,13 +208,20 @@ export function useApiSync() {
 
   const finishWashing = async (roomNumber, machineId) => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/finish-washing`, {
+      // Use machine-state API to finish washing
+      const response = await fetch(`${getApiUrl()}/api/machine-state`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          machineId: machineId
+          isWashing: false,
+          isDrying: false,
+          washTime: 0,
+          dryTime: 0,
+          roomNumber: roomNumber || '',
+          notes: '',
+          phoneNumber: ''
         })
       })
       
@@ -231,14 +244,20 @@ export function useApiSync() {
 
   const updateMachineNotes = async (roomNumber, machineId, notes) => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/rooms/${roomNumber}/update-notes`, {
-        method: 'PUT',
+      // First get current state to preserve it
+      const currentState = await fetch(`${getApiUrl()}/api/machine-state`)
+      const currentData = await currentState.json()
+      
+      // Update notes while preserving other state
+      const response = await fetch(`${getApiUrl()}/api/machine-state`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          machineId: machineId,
-          notes: notes || ''
+          ...currentData.state,
+          notes: notes || '',
+          roomNumber: roomNumber
         })
       })
       
@@ -263,26 +282,33 @@ export function useApiSync() {
   // Keep these for backward compatibility during transition
   const getMachineState = async () => {
     try {
-      const machines = await getMachines()
-      const rooms = await getRooms()
+      const response = await fetch(`${getApiUrl()}/api/machine-state`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch machine state')
+      }
       
-      // Convert new structure to old format for compatibility
-      const mainMachine = machines[0] || {}
-      const activeRoom = rooms.find(r => r.isUsingMachine) || {}
+      const data = await response.json()
+      isConnected.value = true
+      connectionError.value = ''
       
+      // Return in expected format for frontend compatibility
       return {
-        isWashing: mainMachine.isWashing || false,
-        isDrying: mainMachine.isDrying || false,
-        washTime: mainMachine.washTime || 0,
-        dryTime: mainMachine.dryTime || 0,
-        selectedRoom: activeRoom.roomNumber || '',
-        currentMachineUser: activeRoom.roomNumber || '',
-        machineUserIP: activeRoom.ipAddress || '',
-        currentNote: mainMachine.currentNote || '',
-        status: mainMachine.status || 'available'
+        isWashing: data.isWashing || false,
+        isDrying: data.isDrying || false,
+        washTime: data.washTime || 0,
+        dryTime: data.dryTime || 0,
+        selectedRoom: data.roomNumber || '',
+        currentMachineUser: data.roomNumber || '',
+        machineUserIP: data.currentUserIP || '',
+        currentNote: data.notes || '',
+        status: data.isWashing || data.isDrying ? 'in-use' : 'available',
+        currentUserIP: data.currentUserIP || '',
+        canUse: data.canUse !== undefined ? data.canUse : true
       }
     } catch (error) {
       console.error('Error fetching machine state:', error)
+      connectionError.value = 'Lỗi tải trạng thái máy'
+      isConnected.value = false
       return null
     }
   }

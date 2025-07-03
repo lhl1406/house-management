@@ -1,19 +1,12 @@
 const express = require('express')
 const router = express.Router()
-const { 
-  getRooms, 
-  getRoomByNumber, 
-  getRoomByIP, 
-  createOrUpdateRoom,
-  startMachineUsage,
-  finishMachineUsage,
-  updateMachineUsageNotes 
-} = require('./db')
+const { getRoomRepository } = require('./repositories/RepositoryFactory')
 
 // Get all rooms
 router.get('/', async (req, res) => {
   try {
-    const rooms = await getRooms()
+    const roomRepo = getRoomRepository()
+    const rooms = await roomRepo.findAll()
     res.json(rooms)
   } catch (error) {
     console.error('Error getting rooms:', error)
@@ -25,7 +18,8 @@ router.get('/', async (req, res) => {
 router.get('/:roomNumber', async (req, res) => {
   try {
     const roomNumber = req.params.roomNumber
-    const room = await getRoomByNumber(roomNumber)
+    const roomRepo = getRoomRepository()
+    const room = await roomRepo.findByRoomNumber(roomNumber)
     
     if (!room) {
       return res.status(404).json({ error: 'Room not found' })
@@ -49,7 +43,8 @@ router.post('/', async (req, res) => {
       })
     }
     
-    const room = await createOrUpdateRoom(roomData)
+    const roomRepo = getRoomRepository()
+    const room = await roomRepo.createOrUpdate(roomData)
     res.status(201).json(room)
   } catch (error) {
     console.error('Error creating/updating room:', error)
@@ -57,32 +52,13 @@ router.post('/', async (req, res) => {
   }
 })
 
-// Start washing machine in room
+// Legacy endpoints - redirect to new machine-state API
 router.post('/:roomNumber/start-washing', async (req, res) => {
   try {
-    const roomNumber = req.params.roomNumber
-    const { machineId, estimatedEndTime, notes, phoneNumber } = req.body
-    const ipAddress = req.ip || req.connection.remoteAddress
-    
-    if (!machineId || !estimatedEndTime) {
-      return res.status(400).json({ 
-        error: 'Machine ID and estimated end time are required' 
-      })
-    }
-    
-    const usageId = await startMachineUsage({
-      roomNumber,
-      machineId,
-      ipAddress,
-      estimatedEndTime,
-      notes,
-      phoneNumber
-    })
-    
-    res.status(201).json({ 
-      success: true, 
-      usageId,
-      message: 'Machine usage started successfully' 
+    // Redirect to machine-state API for compatibility
+    res.status(302).json({ 
+      message: 'Please use /api/machine-state endpoint',
+      redirect: '/api/machine-state'
     })
   } catch (error) {
     console.error('Error starting machine usage:', error)
@@ -90,23 +66,13 @@ router.post('/:roomNumber/start-washing', async (req, res) => {
   }
 })
 
-// Finish washing machine in room
+// Legacy endpoints - redirect to new machine-state API
 router.post('/:roomNumber/finish-washing', async (req, res) => {
   try {
-    const roomNumber = req.params.roomNumber
-    const { machineId } = req.body
-    
-    if (!machineId) {
-      return res.status(400).json({ 
-        error: 'Machine ID is required' 
-      })
-    }
-    
-    await finishMachineUsage(machineId, roomNumber)
-    
-    res.json({ 
-      success: true, 
-      message: 'Machine usage finished successfully' 
+    // Redirect to machine-state API for compatibility
+    res.status(302).json({ 
+      message: 'Please use /api/machine-state endpoint',
+      redirect: '/api/machine-state'
     })
   } catch (error) {
     console.error('Error finishing machine usage:', error)
@@ -114,29 +80,13 @@ router.post('/:roomNumber/finish-washing', async (req, res) => {
   }
 })
 
-// Update machine usage notes
+// Legacy endpoints - redirect to new machine-state API
 router.put('/:roomNumber/update-notes', async (req, res) => {
   try {
-    const roomNumber = req.params.roomNumber
-    const { machineId, notes } = req.body
-    
-    if (!machineId) {
-      return res.status(400).json({ 
-        error: 'Machine ID is required' 
-      })
-    }
-    
-    const success = await updateMachineUsageNotes(machineId, roomNumber, notes)
-    
-    if (!success) {
-      return res.status(404).json({
-        error: 'Active machine usage not found for this room'
-      })
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Notes updated successfully' 
+    // Redirect to machine-state API for compatibility
+    res.status(302).json({ 
+      message: 'Please use /api/machine-state endpoint',
+      redirect: '/api/machine-state'
     })
   } catch (error) {
     console.error('Error updating machine usage notes:', error)

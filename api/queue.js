@@ -1,12 +1,8 @@
 const express = require('express')
-const { 
-  getQueue, 
-  addToQueue, 
-  removeFromQueue, 
-  getNextInQueue 
-} = require('./data')
+const { getQueueService } = require('./services/QueueService')
 
 const router = express.Router()
+const queueService = getQueueService()
 
 // Middleware to get client IP
 const getClientIP = (req) => {
@@ -34,12 +30,14 @@ const getClientIP = (req) => {
 router.get('/', async (req, res) => {
   try {
     const clientIP = getClientIP(req)
-    const queue = await getQueue()
+    const { machineType } = req.query
+    const queue = await queueService.getQueue(machineType)
+    const isInQueue = await queueService.isInQueue(clientIP)
     
     res.json({
       queue,
       clientIP,
-      isInQueue: queue.some(item => item.ipAddress === clientIP)
+      isInQueue
     })
   } catch (error) {
     console.error('Error getting queue:', error)
@@ -51,37 +49,33 @@ router.get('/', async (req, res) => {
 router.post('/join', async (req, res) => {
   try {
     const clientIP = getClientIP(req)
-    const { room, phoneNumber } = req.body
+    const { room, phoneNumber, machineType } = req.body
     
     if (!room) {
       return res.status(400).json({ error: 'Room is required' })
     }
     
-    // Check if IP is already in queue
-    const currentQueue = await getQueue()
-    if (currentQueue.some(item => item.ipAddress === clientIP)) {
-      return res.status(400).json({ error: 'IP already in queue' })
-    }
+    const result = await queueService.joinQueue(
+      room,
+      phoneNumber || '',
+      clientIP,
+      machineType || 'any'
+    )
     
-    // Add to queue - ensure machineType is always set
-    const queueData = {
-      roomNumber: room,
-      phoneNumber: phoneNumber || '',
-      ipAddress: clientIP,
-      machineType: 'any'  // Default to 'any' type for general queue
-    }
-    
-    const updatedQueue = await addToQueue(queueData)
+    const updatedQueue = await queueService.getQueue()
     
     res.json({
-      success: true,
-      message: `${room} đã được thêm vào hàng đợi`,
-      position: updatedQueue.length,
+      ...result,
+      position: result.queueItem.position,
       queue: updatedQueue
     })
   } catch (error) {
     console.error('Error joining queue:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    if (error.message === 'IP already in queue') {
+      res.status(400).json({ error: 'IP already in queue' })
+    } else {
+      res.status(500).json({ error: 'Internal server error' })
+    }
   }
 })
 
@@ -93,58 +87,28 @@ router.post('/leave', async (req, res) => {
     
     console.log(`🚪 Leave queue request from IP: ${clientIP}, Room: ${room || 'not specified'}`)
     
-    const currentQueue = await getQueue()
-    const userInQueue = currentQueue.find(item => item.ipAddress === clientIP)
+    const result = await queueService.leaveQueue(clientIP, room)
     
-    if (!userInQueue) {
-      console.log(`❌ IP ${clientIP} not found in queue`)
-      return res.status(400).json({ error: 'Bạn không có trong hàng đợi' })
-    }
-    
-    // Additional verification: if room is provided, make sure it matches
-    if (room && userInQueue.roomNumber !== room) {
-      console.log(`❌ Room mismatch for IP ${clientIP}: queue has ${userInQueue.roomNumber}, requested ${room}`)
-      return res.status(400).json({ error: 'Phòng không khớp với thông tin trong hàng đợi' })
-    }
-    
-    console.log(`✅ Removing ${userInQueue.roomNumber} (IP: ${clientIP}) from queue`)
-    
-    const updatedQueue = await removeFromQueue(clientIP)
-    
-    res.json({
-      success: true,
-      message: `${userInQueue.roomNumber} đã rời khỏi hàng đợi`,
-      queue: updatedQueue
-    })
+    res.json(result)
   } catch (error) {
     console.error('Error leaving queue:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    if (error.message === 'IP not found in queue') {
+      res.status(400).json({ error: 'Bạn không có trong hàng đợi' })
+    } else if (error.message === 'Room number does not match queue record') {
+      res.status(400).json({ error: 'Phòng không khớp với thông tin trong hàng đợi' })
+    } else {
+      res.status(500).json({ error: 'Internal server error' })
+    }
   }
 })
 
 // POST /api/queue/next - Process next in queue (when machine becomes available)
 router.post('/next', async (req, res) => {
   try {
-    const nextUser = await getNextInQueue()
+    const { machineType } = req.body
+    const result = await queueService.processNextInQueue(machineType)
     
-    if (!nextUser) {
-      return res.json({ success: true, message: 'Queue is empty', queue: [] })
-    }
-    
-    // Remove the user from queue
-    const updatedQueue = await removeFromQueue(nextUser.ipAddress)
-    
-    res.json({
-      success: true,
-      message: `Đã thông báo cho ${nextUser.roomNumber}`,
-      nextUser: {
-        ip: nextUser.ipAddress,
-        room: nextUser.roomNumber,
-        phoneNumber: nextUser.phoneNumber,
-        joinedAt: nextUser.joinedAt
-      },
-      queue: updatedQueue
-    })
+    res.json(result)
   } catch (error) {
     console.error('Error processing next in queue:', error)
     res.status(500).json({ error: 'Internal server error' })

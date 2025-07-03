@@ -1,7 +1,8 @@
 const express = require('express')
-const { getMachineState, updateMachineState } = require('./data')
+const { getMachineService } = require('./services/MachineService')
 
 const router = express.Router()
+const machineService = getMachineService()
 
 // Middleware to get client IP
 const getClientIP = (req) => {
@@ -29,7 +30,7 @@ const getClientIP = (req) => {
 router.get('/', async (req, res) => {
   try {
     const clientIP = getClientIP(req)
-    const state = await getMachineState()
+    const state = await machineService.getMachineState()
     
     // Add client IP info to response
     res.status(200).json({
@@ -59,7 +60,7 @@ router.post('/', async (req, res) => {
       newState.currentUserIP = ''
     }
     
-    const updatedState = await updateMachineState(newState)
+    const updatedState = await machineService.updateMachineState(newState, clientIP)
     res.status(200).json({ 
       success: true, 
       state: {
